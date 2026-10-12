@@ -1,0 +1,13 @@
+# 语言统计修正（GitHub Linguist）
+#
+# 本仓库的主体是 Markdown 编写的 Agent Skill 文档；
+# scripts/ 下的 Python 只是交付前的辅助体检脚本，不应主导仓库的语言统计。
+
+# 强制 Markdown 计入语言统计
+*.md linguist-detectable
+
+# 体检脚本标记为文档，不计入语言统计
+*.py linguist-documentation
+
+# 图片等非文本资源不参与统计
+docs/images/* linguist-documentation
