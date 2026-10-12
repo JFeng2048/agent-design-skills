@@ -1,0 +1,177 @@
+#!/usr/bin/env python3
+"""从项目里勘察用户记忆系统设计所需的事实，并给出默认方案。
+
+目的：设计所需的信息尽量从项目里读到，而不是抛一堆问题给用户。
+输出「事实 + 证据（文件:行）」与「推断的默认方案」，供填写
+assets/requirements_intake.md 使用。区分代码命中与文档提及，
+避免把文档里的讨论误判为已实现。
+
+用法：
+    python discover_memory_context.py <项目目录>
+    python discover_memory_context.py <项目目录> --json
+    python discover_memory_context.py <项目目录> --exclude scripts/discover_memory_context.py
+
+退出码：0 正常；2 路径或读取错误。
+"""
+
+import argparse
+import json
+import os
+import re
+import sys
+
+SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", "dist", "build", ".idea", ".vscode"}
+SOURCE_EXT = {".py", ".ts", ".js", ".go", ".java", ".json", ".yaml", ".yml", ".toml", ".md", ".txt"}
+
+PATTERNS = {
+    "memory_impl": (r"mem0|memobase|Memory\(|long_term|user_profile|memory_store|长期记忆|记忆系统", "记忆实现"),
+    "storage": (r"redis|sqlite|postgres|mysql|mongodb|chroma|faiss|qdrant|pinecone|pgvector|weaviate|milvus", "存储后端"),
+    "extraction": (r"extract_memory|memory_extract|summarize|write_memory|update_memory|记忆提取", "记忆提取逻辑"),
+    "retrieval": (r"embedding|bm25|vector_search|hybrid_search|rerank|similarity_search|检索", "检索方式"),
+    "pii": (r"pii|sanitize|redact|mask_phone|脱敏|敏感信息", "PII 与脱敏"),
+    "schema": (r"class Memory|memory_schema|backstory|relationship|Profile|profile_patch", "记忆 schema"),
+    "user_binding": (r"user_id|uid\s*=|绑定用户", "用户标识绑定"),
+    "model": (r"model\s*=|claude-|gpt-|qwen|ollama", "模型配置"),
+}
+
+
+def iter_source_files(root, excludes=()):
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+        for name in filenames:
+            path = os.path.join(dirpath, name)
+            if any(token in path for token in excludes):
+                continue
+            if os.path.splitext(name)[1].lower() in SOURCE_EXT:
+                yield path
+
+
+def scan(root, excludes=()):
+    hits = {key: {"code": [], "doc": []} for key in PATTERNS}
+    for path in iter_source_files(root, excludes):
+        is_doc = os.path.splitext(path)[1].lower() in (".md", ".txt")
+        try:
+            with open(path, "r", encoding="utf-8", errors="ignore") as handle:
+                lines = handle.readlines()
+        except OSError:
+            continue
+        if len(lines) > 4000:
+            continue
+        for no, line in enumerate(lines, start=1):
+            for key, (pattern, _) in PATTERNS.items():
+                if re.search(pattern, line, re.I):
+                    rel = os.path.relpath(path, root)
+                    hits[key]["doc" if is_doc else "code"].append(("%s:%d" % (rel, no), line.strip()[:120]))
+    return hits
+
+
+def best_evidence(hits, key):
+    if hits[key]["code"]:
+        return hits[key]["code"][0][0], False
+    if hits[key]["doc"]:
+        return hits[key]["doc"][0][0], True
+    return None, False
+
+
+def recommend(hits):
+    plan = []
+
+    impl, impl_doc = best_evidence(hits, "memory_impl")
+    if impl and not impl_doc:
+        plan.append(("记忆实现", "已存在（%s），复用现有实现，只补缺失能力" % impl))
+    else:
+        plan.append(("记忆实现", "未发现已有记忆实现，按本 skill 的设计流程从零构建"))
+
+    storage, storage_doc = best_evidence(hits, "storage")
+    if storage and not storage_doc:
+        plan.append(("存储后端", "已使用存储（%s），复用现有后端，按需补向量检索能力" % storage))
+    else:
+        plan.append(("存储后端", "未发现明确存储后端，需选型（KV/关系库 + 向量库）"))
+
+    if hits["retrieval"]["code"]:
+        signals = []
+        joined = " ".join(line for _, line in hits["retrieval"]["code"]).lower()
+        for name, token in (("语义", "embedding"), ("BM25", "bm25"), ("重排", "rerank"), ("向量检索", "vector_search")):
+            if token in joined:
+                signals.append(name)
+        plan.append(("检索信号", "已实现：%s；建议补齐时间维度与实体匹配"
+                     % ("、".join(signals) if signals else "基础检索")))
+    else:
+        plan.append(("检索信号", "未发现检索实现，默认语义 + BM25 + 实体 + 时间融合排序"))
+
+    if hits["pii"]["code"]:
+        plan.append(("隐私脱敏", "已有脱敏相关实现，复核是否覆盖自然语言类 PII、是否在本地完成"))
+    else:
+        plan.append(("隐私脱敏", "未发现脱敏实现，需补本地小模型 PII 检测（日志不出本机）"))
+
+    if hits["schema"]["code"]:
+        joined = " ".join(line for _, line in hits["schema"]["code"]).lower()
+        if "backstory" in joined or "relationship" in joined:
+            plan.append(("记忆格式", "已有带消歧字段的结构（backstory/relationship），沿用"))
+        else:
+            plan.append(("记忆格式", "已有 schema，检查是否含时间戳与消歧字段；缺则升级"))
+    else:
+        plan.append(("记忆格式", "未发现 schema 定义，按混合模式建立（关键用 Advanced JSON Cards，量大用 Simple Notes）"))
+
+    binding, binding_doc = best_evidence(hits, "user_binding")
+    plan.append(("用户绑定", "已存在用户标识（%s），记忆键沿用现有命名空间"
+                 % binding if binding else "未发现用户标识绑定，需先确定 user_id 绑定方式"))
+    return plan
+
+
+def report(root, hits, plan, as_json):
+    if as_json:
+        print(json.dumps({
+            "root": root,
+            "hits": {k: {"code": v["code"][:5], "doc": v["doc"][:5]} for k, v in hits.items()},
+            "recommended_plan": [{"item": k, "value": v} for k, v in plan],
+        }, ensure_ascii=False, indent=2))
+        return
+    print("=" * 62)
+    print("记忆系统项目调研：" + root)
+    print("=" * 62)
+    for key, (_, label) in PATTERNS.items():
+        code_hits = hits[key]["code"]
+        doc_hits = hits[key]["doc"]
+        print("-" * 62)
+        if code_hits:
+            print("%s：代码中 %d 处" % (label, len(code_hits)))
+            for where, line in code_hits[:3]:
+                print("  [代码] %s  %s" % (where, line))
+        elif doc_hits:
+            print("%s：仅在文档中提及 %d 处（不构成实现证据）" % (label, len(doc_hits)))
+            for where, line in doc_hits[:2]:
+                print("  [文档] %s  %s" % (where, line))
+        else:
+            print("%s：未发现" % label)
+    print("-" * 62)
+    print("推断的默认方案：")
+    for item, value in plan:
+        print("  · %s：%s" % (item, value))
+    print("-" * 62)
+    print("下一步：把以上事实填入 assets/requirements_intake.md 第 1、2 部分，")
+    print("        只有记忆范围、保留期限、合规边界、成本权重类问题才列入第 3 部分找用户确认。")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="从项目里勘察记忆系统设计所需事实并给出默认方案")
+    parser.add_argument("project", help="项目目录")
+    parser.add_argument("--exclude", action="append", default=[], help="排除路径子串（可重复）")
+    parser.add_argument("--json", action="store_true", help="以 JSON 输出")
+    args = parser.parse_args()
+
+    if not os.path.isdir(args.project):
+        print("目录不存在：" + args.project)
+        return 2
+    try:
+        hits = scan(args.project, args.exclude)
+    except OSError as error:
+        print("读取失败：" + str(error))
+        return 2
+
+    report(args.project, hits, recommend(hits), args.json)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
