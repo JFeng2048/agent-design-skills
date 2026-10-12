@@ -1,6 +1,8 @@
 # agent-design-skills
 
-仓库地址：https://github.com/JFeng2048/agent-design-skillls
+<img src="docs/images/logo.png" alt="agent-design-skills logo" width="200">
+
+仓库地址：https://github.com/JFeng2048/agent-design-skills
 
 一组用于 **LLM Agent 设计** 的 Skill 包，把书籍与工程实践中的设计方法沉淀为可复用的操作流程。
 
@@ -14,16 +16,16 @@
 
 ## 为什么做这个
 
-本仓库记录的不是「提示词技巧」，而是**作者在 Agent 系统提示词设计这份工作里的做事方式**——把每次设计系统提示词时反复用到的判断、取舍和检查项，固化成一套可重复执行的流程：先澄清业务决策，再定人格与结构，接着把规则写成 SOP，最后用脚本体检、用消融实验验收。
+本仓库记录的不是「提示词技巧」，而是**作者在 Agent 系统设计这份工作里的做事方式**——把每次设计时反复用到的判断、取舍和检查项，固化成一套可重复执行的流程：先自主调研，再推断默认方案，接着把规则写成可执行的流程与数据结构，最后用脚本体检、用消融实验验收。
 
-之所以做这件事，是因为 Agent 的行为差异大部分不来自模型能力，而来自**系统提示词与工具定义的设计质量**；而这类工作高度依赖个人经验，很难在团队里复制。流程化之后，设计过程可以被评审、被交接、被迭代。
+之所以做这件事，是因为 Agent 的行为差异大部分不来自模型能力，而来自**系统提示词、运行时状态与用户记忆的设计质量**；而这类工作高度依赖个人经验，很难在团队里复制。流程化之后，设计过程可以被评审、被交接、被迭代。
 
 ## 使用方式
 
 一键安装（[skills CLI](https://skills.sh)，支持 Claude Code / Cursor / Codex / CodeBuddy 等）：
 
 ```bash
-npx skills add JFeng2048/agent-design-skillls
+npx skills add JFeng2048/agent-design-skills
 ```
 
 也可以手动安装：把 skill 目录复制到技能目录后即可被自动加载。
@@ -31,7 +33,41 @@ npx skills add JFeng2048/agent-design-skillls
 - 用户级：`~/.codebuddy/skills/技能名/`
 - 项目级：`.codebuddy/skills/技能名/`
 
-详细用法、脚本与模板说明见 [system-prompt-design/README.md](system-prompt-design/README.md)。
+详细用法、脚本与模板说明见各 skill 目录下的 `README.md`。
+
+## 技术栈
+
+本仓库刻意保持**零依赖**：skill 文档是纯 Markdown，脚本只用 Python 标准库，可被任何支持 Skill 机制的 Agent 直接加载。
+
+| 层 | 内容 | 说明 |
+| --- | --- | --- |
+| 载体 | Markdown（SKILL.md + references + assets） | Skill 的标准格式，元信息用 YAML frontmatter（`name` + `description`） |
+| 渐进式披露 | frontmatter 元信息 → SKILL.md 主流程 → references 按需加载 | 主文件保持精简，深度内容按需读取，避免一次性占满上下文 |
+| 脚本运行时 | Python 3.8+（仅标准库） | 无第三方依赖，不需要安装步骤即可运行 |
+| 检查与度量 | 确定性代码，不依赖 LLM | 计数、阈值比对、PII 检测、成本估算、前缀校验等一律用代码实现 |
+| 分发 | [skills CLI](https://skills.sh)（`npx skills add`） | 也可手动复制到 `~/.codebuddy/skills/` 或 `.codebuddy/skills/` |
+| 评测方法 | 对照实验与消融、LLM-as-a-judge | 见各 skill 的 `references/ablation-experiments.md` / `evaluation-framework.md` |
+
+脚本清单（按 skill 归类）：
+
+| Skill | 脚本 | 作用 |
+| --- | --- | --- |
+| system-prompt-design | `discover_prompt_context.py` | 项目调研：现有提示词、工具、动态字段风险 |
+| | `lint_prompt.py` | 提示词静态体检：模糊措辞、强调密度、XML 配对、SOP 结构 |
+| | `check_prefix_stability.py` | 静态前缀字节级稳定性校验（KV Cache 命中） |
+| agent-status-design | `discover_context.py` | 项目调研：计数器、注入点、约束、S/R/N 估算 |
+| | `status_ledger.py` | 工具调用统计、约束检查、状态栏片段生成 |
+| | `cache_cost_estimator.py` | 替换 vs 追加的缓存成本估算与分界点 |
+| user-memory-design | `discover_memory_context.py` | 项目调研：记忆实现、存储后端、脱敏现状 |
+| | `memory_lint.py` | 记忆库体检：裸 PII、缺来源/时间戳、重复条目 |
+| | `importance_scoring.py` | 记忆重要性评分与压缩淘汰建议 |
+
+设计约束（贯穿所有 skill）：
+
+- **静态前缀字节级稳定**：系统提示词与工具定义不写入时间戳、用户 ID 等动态字段。
+- **动态信息追加末尾**：状态栏、工具 schema 等只增不改，保护 KV Cache 前缀。
+- **需要统计的操作交给代码**：不让 LLM 心算计数，状态与记忆由代码维护。
+- **先自主调研，再问用户**：能从项目、文档、线上数据得到的结论不抛给用户；只有业务决策才确认，且给选项与推荐项。
 
 ## 参考来源
 
@@ -81,7 +117,7 @@ npx skills add JFeng2048/agent-design-skillls
 若上述书籍或项目的作者 / 维护者认为本仓库的引用、链接或整理方式不妥，请直接联系我删除，无需任何流程：
 
 - 邮箱：JFeng2048@outlook.com
-- 或在本仓库提 issue：https://github.com/JFeng2048/agent-design-skillls/issues
+- 或在本仓库提 issue：https://github.com/JFeng2048/agent-design-skills/issues
 
 收到后我会第一时间处理并回复。
 

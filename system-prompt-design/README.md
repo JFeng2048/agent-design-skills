@@ -32,14 +32,14 @@
 
 ```bash
 # 安装本仓库的全部 skill（skills CLI 会自动放到对应 Agent 的技能目录）
-npx skills add JFeng2048/agent-design-skillls
+npx skills add JFeng2048/agent-design-skills
 ```
 
 CLI 也支持 SSH 地址与本地路径：
 
 ```bash
-npx skills add git@github.com:JFeng2048/agent-design-skillls.git
-npx skills add ./agent-design-skillls/system-prompt-design
+npx skills add git@github.com:JFeng2048/agent-design-skills.git
+npx skills add ./agent-design-skills/system-prompt-design
 ```
 
 ### 方式二：手动安装

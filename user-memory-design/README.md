@@ -32,7 +32,7 @@
 ## 安装
 
 ```bash
-npx skills add JFeng2048/agent-design-skillls
+npx skills add JFeng2048/agent-design-skills
 ```
 
 手动安装：把本目录复制到技能目录（建议目录名与 frontmatter 的 `name` 一致，即 `user-memory-design`）。
