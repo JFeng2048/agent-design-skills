@@ -13,6 +13,7 @@
 | [system-prompt-design](system-prompt-design/README.md) | 系统提示词与工具定义的设计、重构、注入加固与消融验收 |
 | [agent-status-design](agent-status-design/README.md) | Agent 状态栏设计：工具计数与约束、TODO 跟踪、环境感知、注入位置与更新策略 |
 | [user-memory-design](user-memory-design/README.md) | 用户记忆系统设计：层次划分、存储格式、写入与检索策略、压缩淘汰、PII 脱敏 |
+| [rag-design](rag-design/README.md) | RAG 管线设计：文档分块、稠密与稀疏检索、混合融合与重排序、检索质量度量 |
 
 ## 为什么做这个
 
