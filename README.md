@@ -70,6 +70,14 @@ npx skills add JFeng2048/agent-design-skills
 - **需要统计的操作交给代码**：不让 LLM 心算计数，状态与记忆由代码维护。
 - **先自主调研，再问用户**：能从项目、文档、线上数据得到的结论不抛给用户；只有业务决策才确认，且给选项与推荐项。
 
+## 开发文档
+
+如果你想了解**这些 skill 为什么这么设计**（方法论、关键取舍、每个 skill 的步骤拆分依据），见 [docs/README.md](docs/README.md)：
+
+- [skill-authoring.md](docs/skill-authoring.md) — 写这类 skill 的 7 条设计原则
+- [decisions.md](docs/decisions.md) — 仓库层面的决策记录（ADR 式）
+- [skills/](docs/skills/) — 四个 skill 各自的设计说明
+
 ## 参考来源
 
 本仓库内容是作者在以下书籍与自身工程实践基础上**独立整理、重新组织**而成的，**未复制任何原书文字内容，也未按原书章节结构编排**。方法层面的思路受下列著作启发，在此致以诚挚谢意，感谢先驱，感谢知识分享：
