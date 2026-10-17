@@ -124,13 +124,43 @@ RAG（Retrieval-Augmented Generation，检索增强生成）的核心思想是**
 - 不解决**文档内片段冗余**——那是 MMR / xQuAD 的职责，可叠加（配额管「文档间怎么分」，xQuAD 管「文档内选哪几条」）。
 - 用 `scripts/quota_allocator.py` 验证并用 `--alpha-sweep` 定 α。详见 `references/multi-document-quota.md`。
 
-### 7. 增强与生成
+### 7. 上下文感知检索：修补分块自身
+产出：每个块的上下文说明（标题路径 / LLM 生成）与索引方式。
+- 分块固有缺陷：切断了块与原始上下文的联系（「该公司」指谁、出自哪份报告），**块自身的嵌入就语义模糊**。
+- 解法：为每个块补一段「我是谁、出自哪里」的定位说明，拼接后再嵌入/索引——不是给检索器打补丁，而是**提升块自身质量**。
+- 成本敏感时先用轻量方案：标题路径前缀、元数据带出处、表格整块保留、指代替换。
+- **顺序：先修分块，再加结构**——上层结构建立在语义模糊的碎片上会事倍功半。
+- 详见 `references/contextual-retrieval.md`。
+
+### 8. 知识组织：结构化索引与文件系统范式
+产出：索引组织方案（按查询形态取舍）。
+- **结构化索引**（RAPTOR 树 / GraphRAG 图）：索引前先用 LLM 归纳、抽象、建关联。RAPTOR 适合「从概念钻进细节」，GraphRAG 适合「A 与 B 的关系」；**组合通常优于单选**。代价是索引与查询都更贵更慢。
+- **判断标准**：查询是「找到包含某信息的片段」→ 混合检索就够；需要跨文档综合、多层次导航、多跳推理、精确消歧 → 才值得投入。
+- **文件系统范式**（OpenViking）：统一 URI + L0/L1/L2 三层按需加载（摘要常驻、按需取全文，与 Skills 渐进式披露同源）+ Markdown 纯文本可 Git。
+- **关键前提**：文件之间必须建立**链接与索引**（像 Wikipedia）。模型不会自动维护链接，**写入提示词必须明确要求**：新增条目先检索已有条目 → 建双向链接 → 更新索引页。用 `scripts/knowledge_link_check.py` 固化为检查。
+- 详见 `references/structured-indexing.md`、`references/knowledge-organization.md`。
+
+### 9. 智能体化与安全边界
+产出：检索形态选择（一次检索 vs ReAct 迭代）+ 注入与权限防护。
+- **Agentic RAG**：检索成为 Agent 可调用的工具，按「思考 → 行动 → 观察」循环迭代，信息充分才生成。简单单轮问答不必用（延迟成本）。
+- **安全边界**：检索内容是**间接提示注入**的典型载体，也可能是**知识库投毒**的落点。两层防御——① 指令与数据分离（来源标记、`role: tool` 返回）；② **检索内容不得直接触发转账/删除/发信**等副作用，需独立授权。
+- 详见 `references/agentic-rag.md`。
+
+### 10. 知识更新机制
+产出：增量更新（PR 化）+ 定期整理 + 失效下线 + 权限隔离。
+- **增量更新**：把每次知识变更当成 PR——Proposer Agent 提交小而完整的 diff，Reviewer Agent **异源、只读证据**独立审核，迭代至收敛（**设最大迭代/预算，超出转人工，不默认放行**），CI 通过后增量重建索引。**索引是可重建的派生物，Git 中已审核的知识才是唯一来源。**
+- **定期整理**：去重去旧合并、**回原始数据核查**（不在摘要间相互改写）、冲突解决写场景限定而非强行收敛；产物同样走 PR，合并后**回放典型用例**确认知识未变不可见。
+- **失效下线**：分块带版本与生效/失效时间，检索层过滤已失效内容。
+- **权限隔离**：检索**必须按调用者权限过滤**，越权内容不进任何用户上下文；多租户需索引与元数据隔离。
+- 策略填写 `assets/knowledge_update_policy.md`。详见 `references/knowledge-update.md`。
+
+### 11. 增强与生成
 产出：上下文注入方式。
 - 把检索结果作为上下文注入 Prompt，让 LLM 基于上下文回答；要求**引用来源**、无依据时说明不知道。
 - 注入顺序与上下文预算联动（见 `system-prompt-design` 与 `agent-status-design` 的上下文管理原则）。
 - 注意：检索到的内容属于**外部内容**，需用来源标记包裹，防止提示注入。
 
-### 8. 验收与调优
+### 12. 验收与调优
 产出：指标对照表 + 调优结论。
 - 按查询类型拆解指标（语义相似 / 精确名称 / 多语言 / 技术代码），定位哪类查询是短板。
 - 逐项消融：分块策略、嵌入模型、索引、融合、重排序各自的贡献。
@@ -144,6 +174,8 @@ RAG（Retrieval-Augmented Generation，检索增强生成）的核心思想是**
 | 分块策略与参数 | 策略、块大小、重叠、边界规则 | `assets/chunking_config_template.md` |
 | 检索管线规格 | 稠密/稀疏模型、索引、融合与重排参数、配额分配参数 | `assets/retrieval_pipeline_spec.md` |
 | 配额分配实现 | 多文档配额分配器（含 α 选型） | `scripts/quota_allocator.py` |
+| 知识更新策略 | PR 流程、整理周期、失效下线、权限隔离 | `assets/knowledge_update_policy.md` |
+| 链接维护检查 | 孤岛、断链、索引覆盖 | `scripts/knowledge_link_check.py` |
 | 标注集与指标基线 | 查询集、相关文档标注、指标口径 | `assets/evaluation_plan_template.md` |
 | 调优记录 | 逐项消融的指标变化 | 同上 |
 
@@ -180,6 +212,18 @@ RAG（Retrieval-Augmented Generation，检索增强生成）的核心思想是**
 - [ ] 分数可能为负时已做平移处理（否则 rel^α 在小数 α 下无定义）
 - [ ] 已观测文档覆盖率与单文档最大占比
 
+**知识组织与更新**
+
+- [ ] 已按查询形态判断是否需要结构化索引（不是所有场景都值得）
+- [ ] 若用图谱：自然语言原文未被降级为三元组，条件与时间依赖保留
+- [ ] 有 L0/L1 层次摘要或等价机制，L0 即可判断相关性
+- [ ] 知识文件之间有链接、有入口页/索引页，已用 `knowledge_link_check.py` 检查
+- [ ] 写入提示词明确要求「先检索已有条目 → 建双向链接 → 更新索引页」
+- [ ] 知识变更走 PR：Proposer + 异源 Reviewer，权限分工，迭代有预算上限
+- [ ] 分块带版本与生效/失效时间，失效内容在检索层被过滤
+- [ ] 检索按调用者权限过滤，多租户索引隔离
+- [ ] 已选 Agentic 或单轮检索；**检索内容不直接触发副作用**，且全部做来源标记
+
 **评估**
 
 - [ ] 有带标注的查询集，指标以 recall@k 为主
@@ -201,6 +245,14 @@ RAG（Retrieval-Augmented Generation，检索增强生成）的核心思想是**
 | IDF 未设下限 | 词出现在过半文档时 IDF 为负，得分异常 | 实现中设下限 |
 | 只看「感觉准不准」 | 无法归因与调优 | 建标注集，量化 recall@k / MRR / nDCG |
 | 不查项目直接问用户一堆开放问题 | 用户还得自己去查 | 项目/文档/线上数据能拿到的自己拿 |
+| 只把原文堆进知识库不提炼 | 计数/比例/边界类查询必然错 | 索引阶段做统计摘要、规则卡、结构化 |
+| 所有查询都上结构化索引 | 成本与延迟显著增加 | 按查询形态取舍，混合检索够用就先别上 |
+| 知识拆成文件却不建链接 | 越多越难检索，退化成孤岛 | 链接互联 + 入口页/索引页，脚本检查 |
+| 模型直接改主库/线上向量库 | 绕过审核，不可追溯不可回滚 | 走 PR：Proposer + 异源 Reviewer |
+| Review 只顺着 Proposer 结论复述 | 漏掉证据层面的真实问题 | 只核对证据与 diff，异源模型 |
+| 迭代不收敛仍默认放行 | 错误知识合入后长期污染 | 设最大迭代与预算，超出转人工 |
+| 新旧版本同时在库且都参与召回 | 模型给出自相矛盾/过时答案 | 分块带版本与失效时间，检索层过滤 |
+| 检索内容直接触发副作用动作 | 间接注入导致数据泄露/误操作 | 检索只影响措辞，副作用需独立授权 |
 | 重排后直接按分数截断取 Top-K | 单文档霸屏，其他相关文档进不来 | 用多文档配额分配 |
 | 用「单文档最多 N 条」硬限制防霸屏 | 只有该文档相关时信息不足 | 配额动态计算，单文档场景自动拿满 K |
 | 配额分配后不管文档内冗余 | 同一文档多条高度相似，浪费名额 | 叠加 MMR / xQuAD 处理文档内去冗余 |
@@ -215,17 +267,24 @@ RAG（Retrieval-Augmented Generation，检索增强生成）的核心思想是**
 | `references/sparse-embedding.md` | 词袋、TF-IDF、BM25 公式与参数、倒排索引 |
 | `references/hybrid-retrieval.md` | 三阶段流水线、RRF、跨编码器重排序、四个度量指标 |
 | `references/multi-document-quota.md` | 多文档配额分配：比例代表制、最大余额法、α 旋钮与边界 |
+| `references/contextual-retrieval.md` | 上下文感知检索：修补分块让块自身语义完整 |
+| `references/structured-indexing.md` | RAPTOR 树与 GraphRAG 图、何时值得投入、图谱局限 |
+| `references/knowledge-organization.md` | 文件系统范式：L0/L1/L2、链接导航与索引页维护 |
+| `references/knowledge-update.md` | 增量更新 PR 化、全量整理、失效下线、租户隔离 |
+| `references/agentic-rag.md` | 智能体化 RAG 与检索注入/投毒防御 |
 
 资产与脚本：
 
 - `assets/requirements_intake.md` — 设计输入表：调研事实、默认方案、待拍板业务决策
 - `assets/chunking_config_template.md` — 分块配置与调优记录
-- `assets/retrieval_pipeline_spec.md` — 检索管线规格（模型、索引、融合、重排参数）
+- `assets/retrieval_pipeline_spec.md` — 检索管线规格（模型、索引、融合、重排、配额参数）
+- `assets/knowledge_update_policy.md` — 知识更新策略（PR 流程、整理周期、失效下线、权限隔离）
 - `assets/evaluation_plan_template.md` — 标注集与指标基线表
 - `scripts/discover_rag_context.py` — 项目勘察：向量库、嵌入模型、分块配置、重排序
 - `scripts/chunk_inspector.py` — 分块质量体检：大小分布、重叠率、结构边界截断
 - `scripts/bm25_calc.py` — BM25 手算与参数校验（输出分步计算过程）
 - `scripts/retrieval_eval.py` — recall@k / MRR / nDCG / 失败率，支持 RRF 融合
 - `scripts/quota_allocator.py` — 多文档配额分配（最大余额法 + α 敏感性扫描）
+- `scripts/knowledge_link_check.py` — 知识库链接体检：孤岛、断链、索引覆盖
 
 按需读取，不要一次性载入全部参考文件。

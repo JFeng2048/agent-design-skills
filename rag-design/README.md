@@ -21,6 +21,13 @@ RAG 的核心思想是**把 LLM 的思考与生成能力，和外部知识库的
 | 单文档霸屏，其他文档进不来 | `references/multi-document-quota.md` + `quota_allocator.py` |
 | 「单文档最多 N 条」导致信息不足 | 同上（配额动态计算，单文档场景自动拿满 K） |
 | 同一文档多条高度相似 | MMR / xQuAD（见 `references/multi-document-quota.md` 第 7 节） |
+| 比例/总数/资格边界类查询必错 | `references/structured-indexing.md`（离线提炼摘要与规则卡） |
+| 跨文档综合、多跳推理查不准 | `references/structured-indexing.md`（RAPTOR / GraphRAG） |
+| 块脱离上下文后语义模糊（“该公司”指谁） | `references/contextual-retrieval.md` |
+| 知识文件互相孤立、越存越难查 | `references/knowledge-organization.md` + `knowledge_link_check.py` |
+| 知识变更绕过审核、无法追溯回滚 | `references/knowledge-update.md`（PR 化） |
+| 新旧版本同时被召回，答案自相矛盾 | 同上（分块版本 + 失效时间，检索层过滤） |
+| 检索内容触发敏感操作 / 知识库被投毒 | `references/agentic-rag.md` |
 
 ## 安装
 
@@ -44,19 +51,28 @@ rag-design/
 │   ├── dense-embedding.md         嵌入与余弦相似度、模型演进、ANN 索引（ANNOY vs HNSW）
 │   ├── sparse-embedding.md        词袋、TF-IDF、BM25 公式与参数、倒排索引
 │   ├── hybrid-retrieval.md        三阶段流水线、RRF、跨编码器重排序、四个度量指标
-│   └── multi-document-quota.md    多文档配额分配：比例代表制、最大余额法、α 旋钮
+│   ├── multi-document-quota.md    多文档配额分配：比例代表制、最大余额法、α 旋钮
+│   ├── contextual-retrieval.md    上下文感知检索：给每个块补「我是谁、出自哪里」
+│   ├── structured-indexing.md     RAPTOR 树与 GraphRAG 图、何时值得投入
+│   ├── knowledge-organization.md  文件系统范式：L0/L1/L2、链接导航与索引页
+│   ├── knowledge-update.md        增量更新 PR 化、全量整理、失效下线、租户隔离
+│   └── agentic-rag.md             智能体化 RAG 与检索注入/投毒防御
 ├── assets/
 │   ├── requirements_intake.md     设计输入表：调研事实、默认方案、待拍板决策
 │   ├── chunking_config_template.md分块配置与调优记录
-│   ├── retrieval_pipeline_spec.md 检索管线规格（模型、索引、融合、重排参数）
+│   ├── retrieval_pipeline_spec.md 检索管线规格（模型、索引、融合、重排、配额、更新策略）
+│   ├── knowledge_update_policy.md 知识更新策略：PR 流程、整理周期、失效下线、权限隔离
 │   └── evaluation_plan_template.md 标注集与指标基线表
 └── scripts/
     ├── discover_rag_context.py    项目勘察：向量库、嵌入模型、分块、重排序
     ├── chunk_inspector.py         分块体检：大小分布、重叠率、结构截断
     ├── bm25_calc.py               BM25 手算与参数校验
     ├── retrieval_eval.py          recall@k / MRR / nDCG / 失败率 + RRF 融合
-    └── quota_allocator.py         多文档配额分配 + α 敏感性扫描
+    ├── quota_allocator.py         多文档配额分配 + α 敏感性扫描
+    └── knowledge_link_check.py    知识库链接体检：孤岛、断链、索引覆盖
 ```
+
+> 脚本默认只遍历源码与文档：跳过 `dist/ build/ node_modules/` 等构建产物、编译产物与锁文件，可用 `--exclude`、`--max-file-size`、`--max-line` 调整。
 
 ## 脚本用法
 
