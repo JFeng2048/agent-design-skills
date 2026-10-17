@@ -25,6 +25,8 @@
 | 矛盾信息不知如何处理 | `references/frameworks.md`（写入时消歧 vs 追加 + 检索时排序） |
 | 旧信息被当成当前事实 | 检索融合时间信号（见 `references/frameworks.md` v3 管线） |
 | 记忆库膨胀、检索变慢 | `references/compression-privacy.md` + `scripts/importance_scoring.py` |
+| 记忆文件互相孤立、越存越难查 | `references/memory-organization-update.md`（链接 + 索引页） |
+| 新旧记忆矛盾、过时记忆仍被召回 | 同上（PR 化更新 + 版本/失效时间） |
 | 记忆里出现明文身份证/密码 | `references/compression-privacy.md` + `scripts/memory_lint.py` |
 | 不知道记忆系统算不算好 | `references/evaluation-framework.md`（三层次框架） |
 | 需要聚合、冲突检测、主动预警 | `references/executable-memory.md`（User as Code） |
@@ -53,7 +55,8 @@ user-memory-design/
 │   ├── executable-memory.md       User as Code：类型化状态、冲突检测、约束执行
 │   ├── memory-types.md            情景 / 语义 / 程序记忆与三套体系对照
 │   ├── frameworks.md              Mem0 v2/v3、Memobase 与参考架构
-│   └── compression-privacy.md     三层压缩与 PII 脱敏
+│   ├── compression-privacy.md     三层压缩与 PII 脱敏
+│   └── memory-organization-update.md  记忆组织（文件系统范式/链接）+ PR 化更新与定期整理
 ├── assets/
 │   ├── requirements_intake.md     设计输入表：调研事实、默认方案、待拍板决策
 │   ├── memory_schema_template.md  记忆条目 schema 与四种格式示例
